@@ -11,6 +11,7 @@ import { ResultsModule } from './results/results.module';
 import { AuditModule } from './audit/audit.module';
 import { JobsModule } from './jobs/jobs.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { AppController } from './app.controller';
 
 @Module({
     imports: [
@@ -47,5 +48,6 @@ import { NotificationsModule } from './notifications/notifications.module';
         JobsModule,
         NotificationsModule,
     ],
+    controllers: [AppController],
 })
 export class AppModule { }
