@@ -27,16 +27,16 @@ export default function HomePage() {
         <main style={{ minHeight: '100vh' }}>
             {/* Nav */}
             <nav className="glass" style={{ position: 'sticky', top: 0, zIndex: 100, padding: '1rem 0' }}>
-                <div className="container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                        <span style={{ fontSize: '1.5rem' }}>🗳️</span>
-                        <span style={{ fontWeight: 800, fontSize: '1.25rem', letterSpacing: '-0.03em' }}>
+                <div className="container nav-container">
+                    <div className="nav-logo">
+                        <span className="logo-icon">🗳️</span>
+                        <span className="logo-text">
                             Vote<span className="gradient-text">Sphere</span>
                         </span>
                     </div>
-                    <div style={{ display: 'flex', gap: '1rem' }}>
-                        <Link href="/auth/login" className="btn btn-secondary" style={{ fontSize: '0.875rem' }}>Sign In</Link>
-                        <Link href="/auth/register" className="btn btn-primary" style={{ fontSize: '0.875rem' }}>Get Started</Link>
+                    <div className="nav-buttons">
+                        <Link href="/auth/login" className="btn btn-secondary nav-btn">Sign In</Link>
+                        <Link href="/auth/register" className="btn btn-primary nav-btn">Get Started</Link>
                     </div>
                 </div>
             </nav>
