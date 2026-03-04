@@ -9,15 +9,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
     if (!user) redirect('/auth/login');
 
     return (
-        <div style={{ display: 'flex', minHeight: '100vh', background: 'rgb(var(--color-bg))' }}>
+        <div className="dashboard-layout">
             {/* Sidebar */}
-            <aside style={{
-                width: '260px',
-                borderRight: '1px solid rgba(var(--color-border), 0.6)',
-                backgroundColor: 'rgb(var(--color-surface))',
-                display: 'flex',
-                flexDirection: 'column',
-            }}>
+            <aside className="dashboard-sidebar">
                 <div style={{ padding: '1.5rem', borderBottom: '1px solid rgba(var(--color-border), 0.6)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
                         <span style={{ fontSize: '1.25rem' }}>🗳️</span>
@@ -37,17 +31,26 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
                 <nav style={{ padding: '1.5rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     <Link href="/dashboard" className="btn btn-secondary" style={{ justifyContent: 'flex-start', border: 'none', background: 'transparent' }}>
-                        🏢 My Organizations
+                        🏢 <span className="hide-on-mobile">My Organizations</span>
                     </Link>
                     <Link href="/dashboard/elections" className="btn btn-secondary" style={{ justifyContent: 'flex-start', border: 'none', background: 'transparent' }}>
-                        🗳️ All Elections
+                        🗳️ <span className="hide-on-mobile">All Elections</span>
                     </Link>
                     <Link href="/dashboard/settings" className="btn btn-secondary" style={{ justifyContent: 'flex-start', border: 'none', background: 'transparent' }}>
-                        ⚙️ Account Settings
+                        ⚙️ <span className="hide-on-mobile">Account Settings</span>
                     </Link>
+
+                    {/* Mobile Sign Out Button */}
+                    <div className="show-on-mobile" style={{ marginLeft: 'auto' }}>
+                        <form action="/auth/logout" method="POST">
+                            <button type="submit" className="btn btn-secondary" style={{ border: 'none', background: 'transparent', padding: '0.5rem' }}>
+                                🚪
+                            </button>
+                        </form>
+                    </div>
                 </nav>
 
-                <div style={{ padding: '1.5rem', borderTop: '1px solid rgba(var(--color-border), 0.6)' }}>
+                <div className="dashboard-sidebar-footer" style={{ padding: '1.5rem', borderTop: '1px solid rgba(var(--color-border), 0.6)' }}>
                     <form action="/auth/logout" method="POST">
                         <button type="submit" className="btn btn-secondary" style={{ width: '100%', justifyContent: 'center' }}>
                             Sign Out
@@ -57,18 +60,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
             </aside>
 
             {/* Main Content */}
-            <main style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <header style={{
-                    height: '70px',
-                    borderBottom: '1px solid rgba(var(--color-border), 0.6)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    padding: '0 2rem',
-                    backgroundColor: 'rgb(var(--color-surface))',
-                }}>
+            <main className="dashboard-main">
+                <header className="dashboard-header">
                     <h2 style={{ fontSize: '1.125rem', fontWeight: 600 }}>Dashboard</h2>
                 </header>
-                <div style={{ flex: 1, padding: '2rem', overflowY: 'auto' }}>
+                <div className="dashboard-content">
                     {children}
                 </div>
             </main>

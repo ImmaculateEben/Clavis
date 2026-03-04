@@ -32,18 +32,11 @@ export default function LoginPage() {
     };
 
     return (
-        <div style={{
-            minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '1.5rem', position: 'relative'
-        }}>
+        <div className="auth-container">
             {/* Glow orb */}
-            <div style={{
-                position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-                width: '500px', height: '500px', background: 'radial-gradient(ellipse, rgba(108,99,255,0.1) 0%, transparent 60%)',
-                pointerEvents: 'none',
-            }} />
+            <div className="auth-glow auth-glow-primary" />
 
-            <div className="card animate-fade-in-up" style={{ width: '100%', maxWidth: '400px', position: 'relative' }}>
+            <div className="card auth-card animate-fade-in-up">
                 <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
                     <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🗳️</div>
                     <h1 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Welcome to VoteSphere</h1>

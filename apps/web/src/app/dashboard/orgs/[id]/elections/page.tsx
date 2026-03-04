@@ -144,7 +144,7 @@ export default function ElectionsPage() {
 
                         {/* Step 1: Basics */}
                         {step === 1 && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <div className="form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
                                 <div>
                                     <label className="label">Election Title *</label>
                                     <input className="input" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="e.g. Student Union President 2026" />
@@ -169,7 +169,7 @@ export default function ElectionsPage() {
 
                         {/* Step 2: Rules */}
                         {step === 2 && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <div className="form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                                 <div>
                                     <label className="label">Anonymity Level</label>
                                     <select className="input" value={form.anonymity_level} onChange={e => setForm({ ...form, anonymity_level: e.target.value })}>

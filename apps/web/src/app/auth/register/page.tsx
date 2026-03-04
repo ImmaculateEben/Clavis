@@ -18,7 +18,7 @@ export default function RegisterPage() {
         setLoading(true);
 
         const supabase = createClient();
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
             email,
             password,
             options: {
@@ -32,23 +32,23 @@ export default function RegisterPage() {
             toast.error(error.message);
             setLoading(false);
         } else {
-            toast.success('Account created! Logging you in...');
-            router.refresh();
+            // If email confirmation is required, session will be null
+            if (data.session) {
+                toast.success('Account created! Logging you in...');
+                router.push('/dashboard');
+                router.refresh();
+            } else {
+                toast.success('Account created! Please check your email inbox to verify your account.');
+                router.push('/auth/login');
+            }
         }
     };
 
     return (
-        <div style={{
-            minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '1.5rem', position: 'relative'
-        }}>
-            <div style={{
-                position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-                width: '500px', height: '500px', background: 'radial-gradient(ellipse, rgba(0,212,170,0.1) 0%, transparent 60%)',
-                pointerEvents: 'none',
-            }} />
+        <div className="auth-container">
+            <div className="auth-glow auth-glow-accent" />
 
-            <div className="card animate-fade-in-up" style={{ width: '100%', maxWidth: '400px', position: 'relative' }}>
+            <div className="card auth-card animate-fade-in-up">
                 <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
                     <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>✨</div>
                     <h1 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Create an Account</h1>

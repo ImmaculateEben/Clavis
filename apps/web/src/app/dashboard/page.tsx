@@ -73,7 +73,7 @@ export default function DashboardOrgsPage() {
             {isCreating && (
                 <div className="card" style={{ marginBottom: '2rem', background: 'rgba(var(--color-primary), 0.05)' }}>
                     <h3 style={{ marginBottom: '1.25rem' }}>Create New Organization</h3>
-                    <form onSubmit={handleCreateOrg} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '1rem', alignItems: 'end' }}>
+                    <form className="form-grid" onSubmit={handleCreateOrg} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '1rem', alignItems: 'end' }}>
                         <div>
                             <label className="label" htmlFor="orgName">Organization Name</label>
                             <input
@@ -125,7 +125,7 @@ export default function DashboardOrgsPage() {
                     </button>
                 </div>
             ) : (
-                <div style={{
+                <div className="orgs-grid" style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
                     gap: '1.5rem',
