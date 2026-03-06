@@ -1,428 +1,329 @@
--- ==========================================
--- VoteSphere 2.0 — Migration 001: Full Schema
--- ==========================================
+-- ============================================
+-- Clavis - Exam Management Platform
+-- Database Schema
+-- ============================================
 
--- Extensions
-create extension if not exists pgcrypto;
-create extension if not exists citext;
+-- Enable UUID generation
+create extension if not exists "pgcrypto";
 
--- =========================
--- ENUMS
--- =========================
-do $$ begin
-  create type election_status as enum ('draft','scheduled','open','closed','archived');
-exception when duplicate_object then null; end $$;
-
-do $$ begin
-  create type anonymity_mode as enum ('anonymous','hybrid','transparent');
-exception when duplicate_object then null; end $$;
-
-do $$ begin
-  create type result_visibility as enum ('realtime','after_close','manual','admin_only');
-exception when duplicate_object then null; end $$;
-
-do $$ begin
-  create type voting_method as enum ('single','multiple','ranked','weighted','referendum','score');
-exception when duplicate_object then null; end $$;
-
-do $$ begin
-  create type org_role as enum ('super_admin','org_admin','election_officer','observer','voter');
-exception when duplicate_object then null; end $$;
-
--- =========================
--- CORE TENANT TABLES
--- =========================
-create table if not exists public.organizations (
-  id          uuid        primary key default gen_random_uuid(),
-  name        text        not null,
-  slug        citext      unique not null,
-  logo_path   text,
-  primary_color text      default '#6C63FF',
-  created_at  timestamptz not null default now(),
-  updated_at  timestamptz not null default now()
-);
-
-create table if not exists public.profiles (
-  user_id    uuid        primary key references auth.users(id) on delete cascade,
-  full_name  text,
-  email      citext,
-  phone      text,
-  avatar_url text,
+-- ============================================
+-- PROFILES TABLE
+-- Extends Supabase auth.users with app data
+-- ============================================
+create table public.profiles (
+  id uuid references auth.users on delete cascade primary key,
+  full_name text not null,
+  role text not null default 'student' check (role in ('admin', 'teacher', 'student')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
-create table if not exists public.org_members (
-  id                  uuid        primary key default gen_random_uuid(),
-  org_id              uuid        not null references public.organizations(id) on delete cascade,
-  user_id             uuid        not null references auth.users(id) on delete cascade,
-  role                org_role    not null,
-  membership_id       text,
-  branch_id           text,
-  department          text,
-  shareholder_weight  numeric(18,6) default 1,
-  is_active           boolean     not null default true,
-  invited_by          uuid        references auth.users(id),
-  created_at          timestamptz not null default now(),
-  unique (org_id, user_id)
+-- ============================================
+-- EXAMS TABLE
+-- ============================================
+create table public.exams (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  description text,
+  created_by uuid references public.profiles(id) on delete cascade not null,
+  duration_minutes integer not null default 30,
+  pin text unique not null,
+  status text not null default 'draft' check (status in ('draft', 'active', 'closed')),
+  shuffle_questions boolean not null default false,
+  show_results boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
--- =========================
--- ELECTION SETUP
--- =========================
-create table if not exists public.elections (
-  id                  uuid          primary key default gen_random_uuid(),
-  org_id              uuid          not null references public.organizations(id) on delete cascade,
-  title               text          not null,
-  description         text,
-  status              election_status not null default 'draft',
-  voting_method       voting_method not null default 'single',
-  anonymity           anonymity_mode not null default 'anonymous',
-  result_visibility   result_visibility not null default 'after_close',
-  start_at            timestamptz,
-  end_at              timestamptz,
-  allow_proxy         boolean       not null default false,
-  quorum_percentage   numeric(5,2),
-  quorum_min_votes    integer,
-  approval_threshold  numeric(5,2)  default 50.00,
-  results_released_at timestamptz,
-  created_by          uuid          references auth.users(id),
-  created_at          timestamptz   not null default now(),
-  updated_at          timestamptz   not null default now(),
-  constraint chk_time_range check (end_at is null or start_at is null or end_at > start_at)
+-- ============================================
+-- QUESTIONS TABLE
+-- ============================================
+create table public.questions (
+  id uuid primary key default gen_random_uuid(),
+  exam_id uuid references public.exams(id) on delete cascade not null,
+  type text not null check (type in ('multiple_choice', 'true_false')),
+  text text not null,
+  options jsonb not null default '[]'::jsonb,
+  correct_answer text not null,
+  points integer not null default 1,
+  order_number integer not null default 0,
+  created_at timestamptz not null default now()
 );
 
-create table if not exists public.positions (
-  id           uuid        primary key default gen_random_uuid(),
-  election_id  uuid        not null references public.elections(id) on delete cascade,
-  org_id       uuid        not null references public.organizations(id) on delete cascade,
-  title        text        not null,
-  description  text,
-  max_selections integer   not null default 1,
-  sort_order   integer     not null default 0,
-  created_at   timestamptz not null default now()
+-- ============================================
+-- EXAM ATTEMPTS TABLE
+-- Tracks student exam sessions
+-- ============================================
+create table public.exam_attempts (
+  id uuid primary key default gen_random_uuid(),
+  exam_id uuid references public.exams(id) on delete cascade not null,
+  student_id uuid references public.profiles(id) on delete cascade not null,
+  started_at timestamptz not null default now(),
+  completed_at timestamptz,
+  score numeric(5,2) default 0,
+  total_points integer default 0,
+  status text not null default 'in_progress' check (status in ('in_progress', 'completed', 'timed_out')),
+  created_at timestamptz not null default now(),
+  unique(exam_id, student_id)
 );
 
-create table if not exists public.candidates (
-  id           uuid        primary key default gen_random_uuid(),
-  election_id  uuid        not null references public.elections(id) on delete cascade,
-  position_id  uuid        not null references public.positions(id) on delete cascade,
-  org_id       uuid        not null references public.organizations(id) on delete cascade,
-  full_name    text        not null,
-  manifesto    text,
-  photo_path   text,
-  campaign_video_url text,
-  social_links jsonb       default '{}',
-  approved     boolean     not null default false,
-  approved_by  uuid        references auth.users(id),
-  approved_at  timestamptz,
-  created_at   timestamptz not null default now()
+-- ============================================
+-- ANSWERS TABLE
+-- Individual question answers
+-- ============================================
+create table public.answers (
+  id uuid primary key default gen_random_uuid(),
+  attempt_id uuid references public.exam_attempts(id) on delete cascade not null,
+  question_id uuid references public.questions(id) on delete cascade not null,
+  selected_answer text,
+  is_correct boolean default false,
+  points_earned integer default 0,
+  created_at timestamptz not null default now(),
+  unique(attempt_id, question_id)
 );
 
--- =========================
--- VOTER REGISTRY & ELIGIBILITY
--- =========================
-create table if not exists public.voter_registry (
-  id                uuid        primary key default gen_random_uuid(),
-  org_id            uuid        not null references public.organizations(id) on delete cascade,
-  election_id       uuid        not null references public.elections(id) on delete cascade,
-  user_id           uuid        references auth.users(id) on delete set null,
-  email             citext,
-  phone             text,
-  external_voter_id text,
-  branch_id         text,
-  department        text,
-  is_eligible       boolean     not null default true,
-  invited_at        timestamptz,
-  unique_token      text        unique,
-  created_at        timestamptz not null default now(),
-  unique (org_id, election_id, user_id),
-  unique (org_id, election_id, email)
-);
+-- ============================================
+-- ROW LEVEL SECURITY
+-- ============================================
 
-create table if not exists public.proxies (
-  id                     uuid  primary key default gen_random_uuid(),
-  org_id                 uuid  not null references public.organizations(id) on delete cascade,
-  election_id            uuid  not null references public.elections(id) on delete cascade,
-  principal_registry_id  uuid  not null references public.voter_registry(id) on delete cascade,
-  proxy_registry_id      uuid  not null references public.voter_registry(id) on delete cascade,
-  created_by             uuid  references auth.users(id),
-  created_at             timestamptz not null default now(),
-  unique (election_id, principal_registry_id)
-);
+-- Enable RLS on all tables
+alter table public.profiles enable row level security;
+alter table public.exams enable row level security;
+alter table public.questions enable row level security;
+alter table public.exam_attempts enable row level security;
+alter table public.answers enable row level security;
 
--- =========================
--- VOTES
--- =========================
-create table if not exists public.votes (
-  id                uuid        primary key default gen_random_uuid(),
-  org_id            uuid        not null references public.organizations(id) on delete cascade,
-  election_id       uuid        not null references public.elections(id) on delete cascade,
-  registry_id       uuid        references public.voter_registry(id) on delete set null,
-  proxy_registry_id uuid        references public.voter_registry(id) on delete set null,
-  voter_hash        text,       -- HMAC of voter token for anonymous dedup
-  weight            numeric(18,6) not null default 1,
-  encrypted_payload bytea       not null,
-  receipt_code      text        not null unique,
-  device_hash       text,
-  ip_hash           text,
-  created_at        timestamptz not null default now()
-);
+-- PROFILES policies
+create policy "Users can view their own profile"
+  on public.profiles for select
+  using (auth.uid() = id);
 
--- Index for fast duplicate checks
-create unique index if not exists idx_votes_election_registry
-  on public.votes (election_id, registry_id)
-  where registry_id is not null;
+create policy "Users can update their own profile"
+  on public.profiles for update
+  using (auth.uid() = id);
 
-create unique index if not exists idx_votes_election_voter_hash
-  on public.votes (election_id, voter_hash)
-  where voter_hash is not null;
+create policy "Allow insert during signup"
+  on public.profiles for insert
+  with check (auth.uid() = id);
 
--- Normalized selections (only written for hybrid/transparent elections)
-create table if not exists public.vote_selections (
-  id           uuid        primary key default gen_random_uuid(),
-  org_id       uuid        not null references public.organizations(id) on delete cascade,
-  election_id  uuid        not null references public.elections(id) on delete cascade,
-  vote_id      uuid        not null references public.votes(id) on delete cascade,
-  position_id  uuid        not null references public.positions(id) on delete cascade,
-  candidate_id uuid        references public.candidates(id) on delete set null,
-  rank         integer,
-  score        numeric(10,2),
-  created_at   timestamptz not null default now()
-);
+create policy "Teachers and admins can view all profiles"
+  on public.profiles for select
+  using (
+    exists (
+      select 1 from public.profiles
+      where id = auth.uid() and role in ('admin', 'teacher')
+    )
+  );
 
--- Results snapshot (written once at close)
-create table if not exists public.election_results (
-  id           uuid        primary key default gen_random_uuid(),
-  org_id       uuid        not null references public.organizations(id) on delete cascade,
-  election_id  uuid        not null references public.elections(id) on delete cascade,
-  computed_at  timestamptz not null default now(),
-  results_json jsonb       not null,
-  results_hash text,       -- SHA-256 of results_json for tamper detection
-  unique (election_id)
-);
+-- EXAMS policies
+create policy "Teachers/admins can create exams"
+  on public.exams for insert
+  with check (
+    exists (
+      select 1 from public.profiles
+      where id = auth.uid() and role in ('admin', 'teacher')
+    )
+  );
 
--- =========================
--- AUDIT LOGS
--- =========================
-create table if not exists public.audit_logs (
-  id            uuid        primary key default gen_random_uuid(),
-  org_id        uuid        references public.organizations(id) on delete set null,
-  actor_user_id uuid        references auth.users(id) on delete set null,
-  action        text        not null,
-  entity_type   text,
-  entity_id     uuid,
-  metadata      jsonb       not null default '{}'::jsonb,
-  created_at    timestamptz not null default now()
-);
+create policy "Teachers/admins can view their exams"
+  on public.exams for select
+  using (
+    created_by = auth.uid()
+    or exists (
+      select 1 from public.profiles
+      where id = auth.uid() and role = 'admin'
+    )
+  );
 
--- =========================
--- UPDATED_AT TRIGGERS
--- =========================
-create or replace function public.set_updated_at()
-returns trigger language plpgsql as $$
-begin
-  new.updated_at = now();
-  return new;
-end $$;
+create policy "Teachers/admins can update their exams"
+  on public.exams for update
+  using (
+    created_by = auth.uid()
+    or exists (
+      select 1 from public.profiles
+      where id = auth.uid() and role = 'admin'
+    )
+  );
 
-drop trigger if exists trg_org_updated on public.organizations;
-create trigger trg_org_updated before update on public.organizations
-for each row execute function public.set_updated_at();
+create policy "Teachers/admins can delete their exams"
+  on public.exams for delete
+  using (
+    created_by = auth.uid()
+    or exists (
+      select 1 from public.profiles
+      where id = auth.uid() and role = 'admin'
+    )
+  );
 
-drop trigger if exists trg_profiles_updated on public.profiles;
-create trigger trg_profiles_updated before update on public.profiles
-for each row execute function public.set_updated_at();
+create policy "Students can view active exams by PIN"
+  on public.exams for select
+  using (status = 'active');
 
-drop trigger if exists trg_elections_updated on public.elections;
-create trigger trg_elections_updated before update on public.elections
-for each row execute function public.set_updated_at();
+-- QUESTIONS policies
+create policy "Exam creators can manage questions"
+  on public.questions for all
+  using (
+    exists (
+      select 1 from public.exams
+      where exams.id = questions.exam_id
+      and (
+        exams.created_by = auth.uid()
+        or exists (
+          select 1 from public.profiles
+          where id = auth.uid() and role = 'admin'
+        )
+      )
+    )
+  );
 
--- Auto-create profile when a user signs up
+create policy "Students can view questions for active exams they are taking"
+  on public.questions for select
+  using (
+    exists (
+      select 1 from public.exam_attempts
+      where exam_attempts.exam_id = questions.exam_id
+      and exam_attempts.student_id = auth.uid()
+      and exam_attempts.status = 'in_progress'
+    )
+  );
+
+-- EXAM ATTEMPTS policies
+create policy "Students can create attempts"
+  on public.exam_attempts for insert
+  with check (auth.uid() = student_id);
+
+create policy "Students can view own attempts"
+  on public.exam_attempts for select
+  using (student_id = auth.uid());
+
+create policy "Students can update own in-progress attempts"
+  on public.exam_attempts for update
+  using (student_id = auth.uid() and status = 'in_progress');
+
+create policy "Teachers can view attempts for their exams"
+  on public.exam_attempts for select
+  using (
+    exists (
+      select 1 from public.exams
+      where exams.id = exam_attempts.exam_id
+      and exams.created_by = auth.uid()
+    )
+  );
+
+-- ANSWERS policies
+create policy "Students can insert answers"
+  on public.answers for insert
+  with check (
+    exists (
+      select 1 from public.exam_attempts
+      where exam_attempts.id = answers.attempt_id
+      and exam_attempts.student_id = auth.uid()
+      and exam_attempts.status = 'in_progress'
+    )
+  );
+
+create policy "Students can view own answers"
+  on public.answers for select
+  using (
+    exists (
+      select 1 from public.exam_attempts
+      where exam_attempts.id = answers.attempt_id
+      and exam_attempts.student_id = auth.uid()
+    )
+  );
+
+create policy "Students can update own answers for in-progress attempts"
+  on public.answers for update
+  using (
+    exists (
+      select 1 from public.exam_attempts
+      where exam_attempts.id = answers.attempt_id
+      and exam_attempts.student_id = auth.uid()
+      and exam_attempts.status = 'in_progress'
+    )
+  );
+
+create policy "Teachers can view answers for their exams"
+  on public.answers for select
+  using (
+    exists (
+      select 1 from public.exam_attempts ea
+      join public.exams e on e.id = ea.exam_id
+      where ea.id = answers.attempt_id
+      and e.created_by = auth.uid()
+    )
+  );
+
+-- ============================================
+-- FUNCTIONS
+-- ============================================
+
+-- Auto-create profile on user signup
 create or replace function public.handle_new_user()
-returns trigger language plpgsql security definer set search_path = public as $$
+returns trigger as $$
 begin
-  insert into public.profiles (user_id, full_name, email)
-  values (new.id, new.raw_user_meta_data->>'full_name', new.email)
-  on conflict (user_id) do nothing;
+  insert into public.profiles (id, full_name, role)
+  values (
+    new.id,
+    coalesce(new.raw_user_meta_data->>'full_name', 'User'),
+    coalesce(new.raw_user_meta_data->>'role', 'student')
+  );
   return new;
-end $$;
+end;
+$$ language plpgsql security definer;
 
-drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- =========================
--- ROLE CHECK HELPERS
--- =========================
-create or replace function public.current_user_id()
-returns uuid language sql stable as $$
-  select auth.uid();
-$$;
+-- Generate unique 6-digit PIN
+create or replace function public.generate_exam_pin()
+returns text as $$
+declare
+  new_pin text;
+  pin_exists boolean;
+begin
+  loop
+    new_pin := lpad(floor(random() * 1000000)::text, 6, '0');
+    select exists(select 1 from public.exams where pin = new_pin) into pin_exists;
+    exit when not pin_exists;
+  end loop;
+  return new_pin;
+end;
+$$ language plpgsql;
 
-create or replace function public.is_member_of_org(p_org_id uuid)
-returns boolean language sql stable as $$
-  select exists (
-    select 1 from public.org_members m
-    where m.org_id = p_org_id
-      and m.user_id = auth.uid()
-      and m.is_active = true
-  );
-$$;
+-- Auto-grade an attempt
+create or replace function public.grade_attempt(attempt_uuid uuid)
+returns void as $$
+declare
+  total integer := 0;
+  earned numeric := 0;
+begin
+  -- Calculate scores
+  update public.answers a
+  set
+    is_correct = (a.selected_answer = q.correct_answer),
+    points_earned = case when a.selected_answer = q.correct_answer then q.points else 0 end
+  from public.questions q
+  where a.question_id = q.id
+  and a.attempt_id = attempt_uuid;
 
-create or replace function public.has_org_role(p_org_id uuid, p_role org_role)
-returns boolean language sql stable as $$
-  select exists (
-    select 1 from public.org_members m
-    where m.org_id = p_org_id
-      and m.user_id = auth.uid()
-      and m.is_active = true
-      and m.role = p_role
-  );
-$$;
+  -- Get totals
+  select
+    coalesce(sum(q.points), 0),
+    coalesce(sum(case when a.selected_answer = q.correct_answer then q.points else 0 end), 0)
+  into total, earned
+  from public.answers a
+  join public.questions q on q.id = a.question_id
+  where a.attempt_id = attempt_uuid;
 
-create or replace function public.has_any_org_role(p_org_id uuid, p_roles org_role[])
-returns boolean language sql stable as $$
-  select exists (
-    select 1 from public.org_members m
-    where m.org_id = p_org_id
-      and m.user_id = auth.uid()
-      and m.is_active = true
-      and m.role = any(p_roles)
-  );
-$$;
-
--- =========================
--- RLS: ENABLE
--- =========================
-alter table public.organizations  enable row level security;
-alter table public.profiles       enable row level security;
-alter table public.org_members    enable row level security;
-alter table public.elections      enable row level security;
-alter table public.positions      enable row level security;
-alter table public.candidates     enable row level security;
-alter table public.voter_registry enable row level security;
-alter table public.proxies        enable row level security;
-alter table public.votes          enable row level security;
-alter table public.vote_selections enable row level security;
-alter table public.election_results enable row level security;
-alter table public.audit_logs     enable row level security;
-
--- =========================
--- RLS: POLICIES
--- =========================
-
--- Organizations
-drop policy if exists org_select on public.organizations;
-create policy org_select on public.organizations
-  for select using (public.is_member_of_org(id));
-
-drop policy if exists org_update on public.organizations;
-create policy org_update on public.organizations
-  for update using (public.has_org_role(id, 'org_admin'))
-  with check (public.has_org_role(id, 'org_admin'));
-
--- Profiles
-drop policy if exists profiles_select on public.profiles;
-create policy profiles_select on public.profiles
-  for select using (user_id = auth.uid());
-
-drop policy if exists profiles_update on public.profiles;
-create policy profiles_update on public.profiles
-  for update using (user_id = auth.uid())
-  with check (user_id = auth.uid());
-
--- Org Members
-drop policy if exists members_select on public.org_members;
-create policy members_select on public.org_members
-  for select using (public.is_member_of_org(org_id));
-
-drop policy if exists members_manage on public.org_members;
-create policy members_manage on public.org_members
-  for all using (public.has_org_role(org_id, 'org_admin'))
-  with check (public.has_org_role(org_id, 'org_admin'));
-
--- Elections
-drop policy if exists elections_select on public.elections;
-create policy elections_select on public.elections
-  for select using (public.is_member_of_org(org_id));
-
-drop policy if exists elections_write on public.elections;
-create policy elections_write on public.elections
-  for insert with check (public.has_any_org_role(org_id, array['org_admin','election_officer']::org_role[]));
-
-drop policy if exists elections_update on public.elections;
-create policy elections_update on public.elections
-  for update using (public.has_any_org_role(org_id, array['org_admin','election_officer']::org_role[]))
-  with check (public.has_any_org_role(org_id, array['org_admin','election_officer']::org_role[]));
-
--- Positions
-drop policy if exists positions_select on public.positions;
-create policy positions_select on public.positions
-  for select using (public.is_member_of_org(org_id));
-
-drop policy if exists positions_write on public.positions;
-create policy positions_write on public.positions
-  for all using (public.has_any_org_role(org_id, array['org_admin','election_officer']::org_role[]))
-  with check (public.has_any_org_role(org_id, array['org_admin','election_officer']::org_role[]));
-
--- Candidates
-drop policy if exists candidates_select on public.candidates;
-create policy candidates_select on public.candidates
-  for select using (public.is_member_of_org(org_id));
-
-drop policy if exists candidates_write on public.candidates;
-create policy candidates_write on public.candidates
-  for all using (public.has_any_org_role(org_id, array['org_admin','election_officer']::org_role[]))
-  with check (public.has_any_org_role(org_id, array['org_admin','election_officer']::org_role[]));
-
--- Voter Registry
-drop policy if exists registry_select on public.voter_registry;
-create policy registry_select on public.voter_registry
-  for select using (
-    public.has_any_org_role(org_id, array['org_admin','election_officer','observer']::org_role[])
-    or (user_id = auth.uid())
-  );
-
-drop policy if exists registry_write on public.voter_registry;
-create policy registry_write on public.voter_registry
-  for all using (public.has_any_org_role(org_id, array['org_admin','election_officer']::org_role[]))
-  with check (public.has_any_org_role(org_id, array['org_admin','election_officer']::org_role[]));
-
--- Proxies
-drop policy if exists proxies_select on public.proxies;
-create policy proxies_select on public.proxies
-  for select using (public.has_any_org_role(org_id, array['org_admin','election_officer']::org_role[]));
-
-drop policy if exists proxies_write on public.proxies;
-create policy proxies_write on public.proxies
-  for all using (public.has_any_org_role(org_id, array['org_admin','election_officer']::org_role[]))
-  with check (public.has_any_org_role(org_id, array['org_admin','election_officer']::org_role[]));
-
--- Votes: direct table inserts are blocked; only service role (cast_vote RPC) can write
-drop policy if exists votes_insert on public.votes;
--- NOTE: Actual inserts go through the cast_vote RPC via service role — no direct insert policy needed.
-
-drop policy if exists votes_select_admin on public.votes;
-create policy votes_select_admin on public.votes
-  for select using (public.has_any_org_role(org_id, array['org_admin','election_officer']::org_role[]));
-
--- Vote selections
-drop policy if exists selections_select on public.vote_selections;
-create policy selections_select on public.vote_selections
-  for select using (public.has_any_org_role(org_id, array['org_admin','election_officer','observer']::org_role[]));
-
--- Election results
-drop policy if exists results_select on public.election_results;
-create policy results_select on public.election_results
-  for select using (public.is_member_of_org(org_id));
-
--- Audit logs
-drop policy if exists audit_select on public.audit_logs;
-create policy audit_select on public.audit_logs
-  for select using (public.has_any_org_role(org_id, array['org_admin','election_officer','observer']::org_role[]));
-
-drop policy if exists audit_insert on public.audit_logs;
-create policy audit_insert on public.audit_logs
-  for insert with check (public.is_member_of_org(org_id));
+  -- Update attempt
+  update public.exam_attempts
+  set
+    score = case when total > 0 then round((earned::numeric / total::numeric) * 100, 2) else 0 end,
+    total_points = total,
+    completed_at = now(),
+    status = 'completed'
+  where id = attempt_uuid;
+end;
+$$ language plpgsql security definer;
